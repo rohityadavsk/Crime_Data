@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+logs/
+*.log
+
+# Delta Lake
+_delta_log/
+spark-warehouse/
+
+# macOS
+.DS_Store
+
+# Local development
+.env
+
+# Data files (but keep directory structure)
+data/**/
+!data/
+!data/input/
+!data/output/
+!data/input/.gitkeep
+!data/output/.gitkeep
+data/input/*
+data/output/* 
