@@ -28,13 +28,3 @@ spark-warehouse/
 
 # Local development
 .env
-
-# Data files (but keep directory structure)
-data/**/
-!data/
-!data/input/
-!data/output/
-!data/input/.gitkeep
-!data/output/.gitkeep
-data/input/*
-data/output/* 
