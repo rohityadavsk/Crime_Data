@@ -33,9 +33,10 @@ jobs:
     
     - name: Set up Spark environment
       run: |
-        export SPARK_HOME=$(pip show pyspark | grep Location | cut -d' ' -f2)/pyspark
-        export PYTHONPATH=$SPARK_HOME/python:$PYTHONPATH
-        export PYTHONPATH=$SPARK_HOME/python/lib/py4j-0.10.9.7-src.zip:$PYTHONPATH
+        SPARK_HOME=$(python -c "import pyspark; print(pyspark.__path__[0])")
+        echo "SPARK_HOME=$SPARK_HOME" >> $GITHUB_ENV
+        echo "PYTHONPATH=$SPARK_HOME/python:$PYTHONPATH" >> $GITHUB_ENV
+        echo "PYTHONPATH=$SPARK_HOME/python/lib/py4j-0.10.9.7-src.zip:$PYTHONPATH" >> $GITHUB_ENV
     
     - name: Run tests
       run: |
@@ -44,8 +45,6 @@ jobs:
     - name: Run dev pipeline
       env:
         ENVIRONMENT: dev
-        SPARK_HOME: $(pip show pyspark | grep Location | cut -d' ' -f2)/pyspark
-        PYTHONPATH: $SPARK_HOME/python:$PYTHONPATH
       run: |
         python -m src.main
     
