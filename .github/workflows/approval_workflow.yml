@@ -1,0 +1,47 @@
+name: Approval Workflow
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  contents: read
+  actions: write
+
+jobs:
+  check-approval:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check if issue has pre-prod label
+        id: check_label
+        run: |
+          if [[ "${{ github.event.issue.labels.*.name }}" == *"pre-prod"* ]]; then
+            echo "has_pre_prod_label=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_pre_prod_label=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check if comment contains 'Approved'
+        id: check_comment
+        run: |
+          if [[ "${{ github.event.comment.body }}" == *"Approved"* ]]; then
+            echo "is_approved=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_approved=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Trigger pre-prod workflow
+        if: steps.check_label.outputs.has_pre_prod_label == 'true' && steps.check_comment.outputs.is_approved == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'crime_data_pipeline.yml',
+              ref: 'main',
+              inputs: {
+                environment: 'pre-prod'
+              }
+            }) 
