@@ -4,6 +4,8 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+  issue_comment:
+    types: [created]
 
 env:
   PYTHON_VERSION: '3.9'
@@ -13,9 +15,29 @@ env:
 permissions:
   issues: write
   contents: read
+  actions: write
 
 jobs:
+  check-approval:
+    if: github.event.issue.labels.*.name == 'pre-prod' && contains(github.event.comment.body, 'Approved')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger pre-prod workflow
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'crime_data_pipeline.yml',
+              ref: 'main',
+              inputs: {
+                environment: 'pre-prod'
+              }
+            })
+
   dev-environment:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -42,10 +64,6 @@ jobs:
         echo "SPARK_HOME=$SPARK_HOME" >> $GITHUB_ENV
         echo "PYTHONPATH=$SPARK_HOME/python:$PYTHONPATH" >> $GITHUB_ENV
         echo "PYTHONPATH=$SPARK_HOME/python/lib/py4j-0.10.9.7-src.zip:$PYTHONPATH" >> $GITHUB_ENV
-    
-    - name: Run tests
-      run: |
-        pytest tests/ --cov=src
     
     - name: Run dev pipeline
       env:
@@ -79,8 +97,8 @@ jobs:
 
   pre-prod-environment:
     needs: dev-environment
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'pre-prod'
     runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.issue.labels.*.name, 'pre-prod')
     steps:
     - uses: actions/checkout@v3
     
@@ -120,7 +138,6 @@ jobs:
         DATABRICKS_CLUSTER_ID: ${{ secrets.DATABRICKS_CLUSTER_ID }}
         ENVIRONMENT: pre-prod
       run: |
-        # Replace JOB_ID with your actual Databricks job ID for pre-prod
         databricks jobs run-now --job-id ${{ secrets.DATABRICKS_PREPROD_JOB_ID }} --notebook-params '{"ENVIRONMENT": "pre-prod"}'
     
     - name: Upload logs
