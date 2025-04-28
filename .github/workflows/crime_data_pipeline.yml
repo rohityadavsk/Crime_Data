@@ -9,6 +9,11 @@ env:
   PYTHON_VERSION: '3.9'
   JAVA_VERSION: '11'
 
+# Add permissions block
+permissions:
+  issues: write
+  contents: read
+
 jobs:
   dev-environment:
     runs-on: ubuntu-latest
