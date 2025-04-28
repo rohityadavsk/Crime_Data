@@ -7,12 +7,19 @@ on:
 
 env:
   PYTHON_VERSION: '3.9'
+  JAVA_VERSION: '11'
 
 jobs:
   dev-environment:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+    
+    - name: Set up Java
+      uses: actions/setup-java@v3
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
     
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -24,6 +31,12 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
     
+    - name: Set up Spark environment
+      run: |
+        export SPARK_HOME=$(pip show pyspark | grep Location | cut -d' ' -f2)/pyspark
+        export PYTHONPATH=$SPARK_HOME/python:$PYTHONPATH
+        export PYTHONPATH=$SPARK_HOME/python/lib/py4j-0.10.9.7-src.zip:$PYTHONPATH
+    
     - name: Run tests
       run: |
         pytest tests/ --cov=src
@@ -31,6 +44,8 @@ jobs:
     - name: Run dev pipeline
       env:
         ENVIRONMENT: dev
+        SPARK_HOME: $(pip show pyspark | grep Location | cut -d' ' -f2)/pyspark
+        PYTHONPATH: $SPARK_HOME/python:$PYTHONPATH
       run: |
         python -m src.main
     
