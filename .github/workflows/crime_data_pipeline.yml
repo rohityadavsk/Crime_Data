@@ -4,16 +4,6 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'dev'
-        type: choice
-        options:
-          - dev
-          - pre-prod
-          - prod
 
 env:
   PYTHON_VERSION: '3.9'
@@ -23,11 +13,9 @@ env:
 permissions:
   issues: write
   contents: read
-  workflows: write
 
 jobs:
   dev-environment:
-    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -90,8 +78,9 @@ jobs:
           })
 
   pre-prod-environment:
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'pre-prod'
+    needs: dev-environment
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.issue.labels.*.name, 'pre-prod')
     steps:
     - uses: actions/checkout@v3
     
@@ -131,6 +120,7 @@ jobs:
         DATABRICKS_CLUSTER_ID: ${{ secrets.DATABRICKS_CLUSTER_ID }}
         ENVIRONMENT: pre-prod
       run: |
+        # Replace JOB_ID with your actual Databricks job ID for pre-prod
         databricks jobs run-now --job-id ${{ secrets.DATABRICKS_PREPROD_JOB_ID }} --notebook-params '{"ENVIRONMENT": "pre-prod"}'
     
     - name: Upload logs
