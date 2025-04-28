@@ -57,8 +57,30 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
+        pip install flake8
+    
+    - name: Run tests
+      id: tests
+      run: |
+        pytest tests/ --cov=src --cov-report=xml
+        echo "tests_passed=true" >> $GITHUB_OUTPUT
+    
+    - name: Run linting
+      id: lint
+      run: |
+        flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 src/ tests/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        echo "lint_passed=true" >> $GITHUB_OUTPUT
+    
+    - name: Upload coverage report
+      if: steps.tests.outputs.tests_passed == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage.xml
     
     - name: Set up Spark environment
+      if: steps.tests.outputs.tests_passed == 'true' && steps.lint.outputs.lint_passed == 'true'
       run: |
         SPARK_HOME=$(python -c "import pyspark; print(pyspark.__path__[0])")
         echo "SPARK_HOME=$SPARK_HOME" >> $GITHUB_ENV
@@ -66,24 +88,28 @@ jobs:
         echo "PYTHONPATH=$SPARK_HOME/python/lib/py4j-0.10.9.7-src.zip:$PYTHONPATH" >> $GITHUB_ENV
     
     - name: Run dev pipeline
+      if: steps.tests.outputs.tests_passed == 'true' && steps.lint.outputs.lint_passed == 'true'
       env:
         ENVIRONMENT: dev
       run: |
         python -m src.main
     
     - name: Create deployment artifacts
+      if: steps.tests.outputs.tests_passed == 'true' && steps.lint.outputs.lint_passed == 'true'
       run: |
         mkdir -p artifacts
         cp -r src artifacts/
         cp requirements.txt artifacts/
     
     - name: Upload artifacts
+      if: steps.tests.outputs.tests_passed == 'true' && steps.lint.outputs.lint_passed == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: pipeline-artifacts
         path: artifacts/
     
     - name: Request pre-prod promotion
+      if: steps.tests.outputs.tests_passed == 'true' && steps.lint.outputs.lint_passed == 'true'
       uses: actions/github-script@v6
       with:
         script: |
