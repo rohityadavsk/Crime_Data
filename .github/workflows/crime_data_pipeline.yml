@@ -106,7 +106,6 @@ jobs:
 
   pre-prod-environment:
     needs: dev-environment
-    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'pre-prod'
     environment: pre-prod
     runs-on: ubuntu-latest
     steps:
