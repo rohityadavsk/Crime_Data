@@ -1,0 +1,239 @@
+name: Crime Data Pipeline CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to (dev, pre-prod, prod)'
+        required: true
+        default: 'dev'
+
+  issue_comment:
+    types: [created]
+
+env:
+  PYTHON_VERSION: '3.9'
+  JAVA_VERSION: '11'
+
+# Add permissions block
+permissions:
+  issues: write
+  contents: read
+  actions: write
+
+jobs:
+
+  dev-environment:
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'dev')
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Java
+      uses: actions/setup-java@v3
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install flake8
+    
+    - name: Run tests
+      id: tests
+      run: |
+        pytest tests/ --cov=src --cov-report=xml
+        echo "tests_passed=true" >> $GITHUB_OUTPUT
+    
+    - name: Run linting
+      id: lint
+      run: |
+        flake8 src/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 src/ tests/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        echo "lint_passed=true" >> $GITHUB_OUTPUT
+    
+    - name: Upload coverage report
+      if: steps.tests.outputs.tests_passed == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: coverage-report
+        path: coverage.xml
+    
+    - name: Set up Spark environment
+      if: steps.tests.outputs.tests_passed == 'true' && steps.lint.outputs.lint_passed == 'true'
+      run: |
+        SPARK_HOME=$(python -c "import pyspark; print(pyspark.__path__[0])")
+        echo "SPARK_HOME=$SPARK_HOME" >> $GITHUB_ENV
+        echo "PYTHONPATH=$SPARK_HOME/python:$PYTHONPATH" >> $GITHUB_ENV
+        echo "PYTHONPATH=$SPARK_HOME/python/lib/py4j-0.10.9.7-src.zip:$PYTHONPATH" >> $GITHUB_ENV
+    
+    - name: Run dev pipeline
+      if: steps.tests.outputs.tests_passed == 'true' && steps.lint.outputs.lint_passed == 'true'
+      env:
+        ENVIRONMENT: dev
+      run: |
+        python -m src.main
+    
+    - name: Create deployment artifacts
+      if: steps.tests.outputs.tests_passed == 'true' && steps.lint.outputs.lint_passed == 'true'
+      run: |
+        mkdir -p artifacts
+        cp -r src artifacts/
+        cp requirements.txt artifacts/
+    
+    - name: Upload artifacts
+      if: steps.tests.outputs.tests_passed == 'true' && steps.lint.outputs.lint_passed == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: pipeline-artifacts
+        path: artifacts/
+    
+    - name: Request pre-prod promotion
+      if: steps.tests.outputs.tests_passed == 'true' && steps.lint.outputs.lint_passed == 'true'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: "Request to promote to pre-prod environment",
+            body: "Dev environment pipeline completed successfully. Please review and approve promotion to pre-prod environment.",
+            labels: ["promotion-request", "pre-prod"]
+          })
+
+  pre-prod-environment:
+    needs: dev-environment
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'pre-prod'
+    environment: pre-prod
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: pipeline-artifacts
+        path: artifacts/
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r artifacts/requirements.txt
+    
+    - name: Install Databricks CLI
+      run: pip install databricks-cli
+    
+    - name: Configure Databricks CLI
+      env:
+        DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+        DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      run: |
+        databricks configure --token <<EOF
+        $DATABRICKS_HOST
+        $DATABRICKS_TOKEN
+        EOF
+    
+    - name: Trigger Databricks Job (pre-prod)
+      env:
+        DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+        DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        DATABRICKS_CLUSTER_ID: ${{ secrets.DATABRICKS_CLUSTER_ID }}
+      run: |
+        databricks jobs run-now --job-id ${{ secrets.DATABRICKS_PREPROD_JOB_ID }} \
+          --notebook-params '{
+            "ENVIRONMENT": "pre-prod",
+            "AZURE_STORAGE_ACCOUNT_NAME": "${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}",
+            "AZURE_STORAGE_ACCOUNT_KEY": "${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}",
+            "AZURE_STORAGE_CONTAINER_NAME": "${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}"
+          }'
+    
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: preprod-logs
+        path: logs/
+    
+    - name: Request prod promotion
+      uses: actions/github-script@v6
+      with:
+        script: |
+          github.rest.issues.create({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            title: "Request to promote to prod environment",
+            body: "Pre-prod environment pipeline completed successfully. Please review and approve promotion to prod environment.",
+            labels: ["promotion-request", "prod"]
+          })
+
+  prod-environment:
+    needs: pre-prod-environment
+    environment: prod
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.issue.labels.*.name, 'prod')
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Download artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: pipeline-artifacts
+        path: artifacts/
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r artifacts/requirements.txt
+    
+    - name: Install Databricks CLI
+      run: pip install databricks-cli
+    
+    - name: Configure Databricks CLI
+      env:
+        DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+        DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      run: |
+        databricks configure --token <<EOF
+        $DATABRICKS_HOST
+        $DATABRICKS_TOKEN
+        EOF
+    
+    - name: Trigger Databricks Job (prod)
+      env:
+        DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+        DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+        DATABRICKS_CLUSTER_ID: ${{ secrets.DATABRICKS_CLUSTER_ID }}
+      run: |
+        databricks jobs run-now --job-id ${{ secrets.DATABRICKS_PROD_JOB_ID }} \
+          --notebook-params '{
+            "ENVIRONMENT": "prod",
+            "AZURE_STORAGE_ACCOUNT_NAME": "${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}",
+            "AZURE_STORAGE_ACCOUNT_KEY": "${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}",
+            "AZURE_STORAGE_CONTAINER_NAME": "${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}"
+          }'
+    
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: prod-logs
+        path: logs/ 
