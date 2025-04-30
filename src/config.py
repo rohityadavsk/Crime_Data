@@ -68,7 +68,7 @@ class Config:
         self.databricks_token = os.getenv(f'DATABRICKS_{self.environment.upper()}_TOKEN')
         self.databricks_cluster_id = os.getenv(f'DATABRICKS_{self.environment.upper()}_CLUSTER_ID')
         if not all([self.databricks_host, self.databricks_token, self.databricks_cluster_id]):
-            raise ValueError(f"Missing required Databricks configuration for {self.environment} environment")
+            raise ValueError(f"Missing required Databricks configuration for {self.environment} environment") 
 
     def _set_azure_storage_config(self) -> None:
         """

@@ -4,12 +4,6 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to (dev, pre-prod, prod)'
-        required: true
-        default: 'dev'
-
   issue_comment:
     types: [created]
 
@@ -112,13 +106,14 @@ jobs:
 
   pre-prod-environment:
     needs: dev-environment
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'pre-prod'
     environment: pre-prod
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
     
     - name: Download artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v3
       with:
         name: pipeline-artifacts
         path: artifacts/
@@ -132,6 +127,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r artifacts/requirements.txt
+        pip install databricks-sdk  # Required for databricks_job_setup.py
     
     - name: Install Databricks CLI
       run: pip install databricks-cli
@@ -146,23 +142,27 @@ jobs:
         $DATABRICKS_TOKEN
         EOF
     
-    - name: Trigger Databricks Job (pre-prod)
+    - name: Create Databricks Job for pre-prod
       env:
         DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
         DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         DATABRICKS_CLUSTER_ID: ${{ secrets.DATABRICKS_CLUSTER_ID }}
+        AZURE_STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
+        AZURE_STORAGE_ACCOUNT_KEY: ${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}
+        AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
+        ENVIRONMENT: pre-prod
       run: |
-        databricks jobs run-now --job-id ${{ secrets.DATABRICKS_PREPROD_JOB_ID }} \
-          --notebook-params '{
-            "ENVIRONMENT": "pre-prod",
-            "AZURE_STORAGE_ACCOUNT_NAME": "${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}",
-            "AZURE_STORAGE_ACCOUNT_KEY": "${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}",
-            "AZURE_STORAGE_CONTAINER_NAME": "${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}"
-          }'
+        python -m src.databricks_job_setup
+        export DATABRICKS_JOB_ID=$(cat databricks_job_id.txt)
+        echo "DATABRICKS_JOB_ID=$DATABRICKS_JOB_ID" >> $GITHUB_ENV
+    
+    - name: Trigger Databricks Job (pre-prod)
+      run: |
+        databricks jobs run-now --job-id $DATABRICKS_JOB_ID
     
     - name: Upload logs
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: preprod-logs
         path: logs/
@@ -202,6 +202,7 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r artifacts/requirements.txt
+        pip install databricks-sdk  # Required for databricks_job_setup.py
     
     - name: Install Databricks CLI
       run: pip install databricks-cli
@@ -216,23 +217,27 @@ jobs:
         $DATABRICKS_TOKEN
         EOF
     
-    - name: Trigger Databricks Job (prod)
+    - name: Create Databricks Job for prod
       env:
         DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
         DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         DATABRICKS_CLUSTER_ID: ${{ secrets.DATABRICKS_CLUSTER_ID }}
+        AZURE_STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
+        AZURE_STORAGE_ACCOUNT_KEY: ${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}
+        AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
+        ENVIRONMENT: prod
       run: |
-        databricks jobs run-now --job-id ${{ secrets.DATABRICKS_PROD_JOB_ID }} \
-          --notebook-params '{
-            "ENVIRONMENT": "prod",
-            "AZURE_STORAGE_ACCOUNT_NAME": "${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}",
-            "AZURE_STORAGE_ACCOUNT_KEY": "${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}",
-            "AZURE_STORAGE_CONTAINER_NAME": "${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}"
-          }'
+        python -m src.databricks_job_setup
+        export DATABRICKS_JOB_ID=$(cat databricks_job_id.txt)
+        echo "DATABRICKS_JOB_ID=$DATABRICKS_JOB_ID" >> $GITHUB_ENV
+    
+    - name: Trigger Databricks Job (prod)
+      run: |
+        databricks jobs run-now --job-id $DATABRICKS_JOB_ID
     
     - name: Upload logs
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v3
       with:
         name: prod-logs
         path: logs/ 
