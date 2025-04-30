@@ -16,12 +16,21 @@ class CrimeDataProcessor:
         """
         self.config = config
         self.logger = setup_logger('crime_processor')
-        self.spark = SparkSession.builder \
+        
+        # Configure Spark session with Delta and Azure Storage support
+        spark_builder = SparkSession.builder \
             .appName("CrimeDataProcessing") \
             .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
             .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
-            .config("spark.jars.packages", "io.delta:delta-spark_2.12:3.3.1") \
-            .getOrCreate()
+            .config("spark.jars.packages", "io.delta:delta-spark_2.12:3.3.1")
+            
+        # Add Azure Storage configuration if using Databricks
+        if self.config.use_databricks:
+            spark_builder = spark_builder \
+                .config(f"fs.azure.account.key.{self.config.azure_storage_account_name}.dfs.core.windows.net", 
+                        self.config.azure_storage_account_key)
+        
+        self.spark = spark_builder.getOrCreate()
         self.df: Optional[DataFrame] = None
         self.processed_df: Optional[DataFrame] = None
         self.logger.info("Initialized CrimeDataProcessor")
@@ -41,9 +50,12 @@ class CrimeDataProcessor:
         if csv_options:
             options.update(csv_options)
         input_path = self.config.input_path
-        if not Path(input_path).exists():
+        
+        # Check if file exists (only for local development)
+        if not self.config.use_databricks and not Path(input_path).exists():
             self.logger.error(f"Input file or directory does not exist: {input_path}")
             raise FileNotFoundError(f"Input file or directory does not exist: {input_path}")
+            
         self.logger.info(f"Reading data from {input_path} with options: {options}")
         try:
             self.df = self.spark.read.options(**options).csv(input_path)

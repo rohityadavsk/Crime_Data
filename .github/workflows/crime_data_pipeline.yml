@@ -107,6 +107,7 @@ jobs:
   pre-prod-environment:
     needs: dev-environment
     if: github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'pre-prod'
+    environment: pre-prod
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
@@ -145,9 +146,14 @@ jobs:
         DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
         DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         DATABRICKS_CLUSTER_ID: ${{ secrets.DATABRICKS_CLUSTER_ID }}
-        ENVIRONMENT: pre-prod
       run: |
-        databricks jobs run-now --job-id ${{ secrets.DATABRICKS_PREPROD_JOB_ID }} --notebook-params '{"ENVIRONMENT": "pre-prod"}'
+        databricks jobs run-now --job-id ${{ secrets.DATABRICKS_PREPROD_JOB_ID }} \
+          --notebook-params '{
+            "ENVIRONMENT": "pre-prod",
+            "AZURE_STORAGE_ACCOUNT_NAME": "${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}",
+            "AZURE_STORAGE_ACCOUNT_KEY": "${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}",
+            "AZURE_STORAGE_CONTAINER_NAME": "${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}"
+          }'
     
     - name: Upload logs
       if: always()
@@ -170,6 +176,7 @@ jobs:
 
   prod-environment:
     needs: pre-prod-environment
+    environment: prod
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch' || contains(github.event.issue.labels.*.name, 'prod')
     steps:
@@ -209,10 +216,14 @@ jobs:
         DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
         DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
         DATABRICKS_CLUSTER_ID: ${{ secrets.DATABRICKS_CLUSTER_ID }}
-        ENVIRONMENT: prod
       run: |
-        # Replace JOB_ID with your actual Databricks job ID for prod
-        databricks jobs run-now --job-id ${{ secrets.DATABRICKS_PROD_JOB_ID }} --notebook-params '{"ENVIRONMENT": "prod"}'
+        databricks jobs run-now --job-id ${{ secrets.DATABRICKS_PROD_JOB_ID }} \
+          --notebook-params '{
+            "ENVIRONMENT": "prod",
+            "AZURE_STORAGE_ACCOUNT_NAME": "${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}",
+            "AZURE_STORAGE_ACCOUNT_KEY": "${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}",
+            "AZURE_STORAGE_CONTAINER_NAME": "${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}"
+          }'
     
     - name: Upload logs
       if: always()

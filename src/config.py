@@ -22,6 +22,9 @@ class Config:
     use_databricks: bool = False
     base_data_dir: Optional[str] = None
     data_path: str = field(init=False)
+    azure_storage_account_name: Optional[str] = None
+    azure_storage_account_key: Optional[str] = None
+    azure_storage_container_name: Optional[str] = None
 
     def __post_init__(self) -> None:
         """
@@ -45,10 +48,12 @@ class Config:
             os.makedirs(self.input_path, exist_ok=True)
             os.makedirs(self.output_path, exist_ok=True)
         else:
-            self.input_path = self.input_path or '/dbfs/FileStore/temp/input_data'
-            self.output_path = self.output_path or '/dbfs/FileStore/temp/output_data'
+            # For pre-prod and prod, use Azure Data Lake paths
+            self.input_path = self.input_path or f"abfss://{self.azure_storage_container_name}@{self.azure_storage_account_name}.dfs.core.windows.net/input"
+            self.output_path = self.output_path or f"abfss://{self.azure_storage_container_name}@{self.azure_storage_account_name}.dfs.core.windows.net/output"
             self.use_databricks = True
             self._set_databricks_config()
+            self._set_azure_storage_config()
 
         self.data_path = str(self.base_dir / 'data')
 
@@ -63,4 +68,14 @@ class Config:
         self.databricks_token = os.getenv(f'DATABRICKS_{self.environment.upper()}_TOKEN')
         self.databricks_cluster_id = os.getenv(f'DATABRICKS_{self.environment.upper()}_CLUSTER_ID')
         if not all([self.databricks_host, self.databricks_token, self.databricks_cluster_id]):
-            raise ValueError(f"Missing required Databricks configuration for {self.environment} environment") 
+            raise ValueError(f"Missing required Databricks configuration for {self.environment} environment")
+
+    def _set_azure_storage_config(self) -> None:
+        """
+        Set Azure Storage configuration from environment variables.
+        """
+        self.azure_storage_account_name = os.getenv('AZURE_STORAGE_ACCOUNT_NAME')
+        self.azure_storage_account_key = os.getenv('AZURE_STORAGE_ACCOUNT_KEY')
+        self.azure_storage_container_name = os.getenv('AZURE_STORAGE_CONTAINER_NAME')
+        if not all([self.azure_storage_account_name, self.azure_storage_account_key, self.azure_storage_container_name]):
+            raise ValueError("Missing required Azure Storage configuration") 
