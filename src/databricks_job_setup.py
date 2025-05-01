@@ -62,11 +62,11 @@ def create_databricks_job(config: Config) -> str:
         )
     ]
 
-    # Create the job
+    # Create the job using the proper enum for format
     job = w.jobs.create(
         name=f"Crime Data Pipeline - {config.environment}",
         tasks=tasks,
-        format="MULTI_TASK"
+        format=jobs.JobFormat.MULTI_TASK
     )
 
     return job.job_id
