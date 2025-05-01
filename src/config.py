@@ -64,9 +64,20 @@ class Config:
         Example:
             config = Config(environment='pre-prod')
         """
-        self.databricks_host = os.getenv(f'DATABRICKS_{self.environment.upper()}_HOST')
-        self.databricks_token = os.getenv(f'DATABRICKS_{self.environment.upper()}_TOKEN')
-        self.databricks_cluster_id = os.getenv(f'DATABRICKS_{self.environment.upper()}_CLUSTER_ID')
+        # Normalize environment name for environment variables (replace '-' with '_')
+        env_name = self.environment.upper().replace('-', '_')
+        
+        # First try with environment-specific variables
+        self.databricks_host = os.getenv(f'DATABRICKS_{env_name}_HOST')
+        self.databricks_token = os.getenv(f'DATABRICKS_{env_name}_TOKEN')
+        self.databricks_cluster_id = os.getenv(f'DATABRICKS_{env_name}_CLUSTER_ID')
+        
+        # Fall back to generic variables if environment-specific ones are not found
+        if not all([self.databricks_host, self.databricks_token, self.databricks_cluster_id]):
+            self.databricks_host = os.getenv('DATABRICKS_HOST')
+            self.databricks_token = os.getenv('DATABRICKS_TOKEN') 
+            self.databricks_cluster_id = os.getenv('DATABRICKS_CLUSTER_ID')
+            
         if not all([self.databricks_host, self.databricks_token, self.databricks_cluster_id]):
             raise ValueError(f"Missing required Databricks configuration for {self.environment} environment") 
 
