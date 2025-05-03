@@ -49,7 +49,7 @@ class Config:
             os.makedirs(self.output_path, exist_ok=True)
         else:
             # For pre-prod and prod, use Azure Data Lake paths
-            self.input_path = self.input_path or f"abfss://{self.azure_storage_container_name}@{self.azure_storage_account_name}.dfs.core.windows.net/input"
+            self.input_path = self.input_path or f"abfss://{self.azure_storage_container_name}@{self.azure_storage_account_name}.dfs.core.windows.net/raw/"
             self.output_path = self.output_path or f"abfss://{self.azure_storage_container_name}@{self.azure_storage_account_name}.dfs.core.windows.net/output"
             self.use_databricks = True
             self._set_databricks_config()

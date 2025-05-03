@@ -104,139 +104,176 @@ jobs:
             labels: ["promotion-request", "pre-prod"]
           })
 
-  pre-prod-environment:
-    needs: dev-environment
-    environment: pre-prod
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
+  # pre-prod-environment:
+  #   needs: dev-environment
+  #   environment: pre-prod
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #   - uses: actions/checkout@v3
     
-    - name: Download artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: pipeline-artifacts
-        path: artifacts/
+  #   - name: Download artifacts
+  #     uses: actions/download-artifact@v4
+  #     with:
+  #       name: pipeline-artifacts
+  #       path: artifacts/
     
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
+  #   - name: Set up Python
+  #     uses: actions/setup-python@v4
+  #     with:
+  #       python-version: ${{ env.PYTHON_VERSION }}
     
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r artifacts/requirements.txt
-        pip install requests  # Required for direct API calls to Databricks
+  #   - name: Install dependencies
+  #     run: |
+  #       python -m pip install --upgrade pip
+  #       pip install -r artifacts/requirements.txt
+  #       pip install requests wheel  # Required for API calls and wheel building
     
-    - name: Install Databricks CLI
-      run: pip install databricks-cli
+  #   - name: Install Databricks CLI
+  #     run: pip install databricks-cli
     
-    - name: Configure Databricks CLI
-      env:
-        DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-        DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-      run: |
-        databricks configure --token <<EOF
-        $DATABRICKS_HOST
-        $DATABRICKS_TOKEN
-        EOF
+  #   - name: Configure Databricks CLI
+  #     env:
+  #       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+  #       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+  #     run: |
+  #       databricks configure --token <<EOF
+  #       $DATABRICKS_HOST
+  #       $DATABRICKS_TOKEN
+  #       EOF
     
-    - name: Create Databricks Job for pre-prod
-      env:
-        DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-        DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-        DATABRICKS_CLUSTER_ID: ${{ secrets.DATABRICKS_CLUSTER_ID }}
-        AZURE_STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
-        AZURE_STORAGE_ACCOUNT_KEY: ${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}
-        AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
-        ENVIRONMENT: pre-prod
-      run: |
-        python -m src.databricks_job_setup
-        export DATABRICKS_JOB_ID=$(cat databricks_job_id.txt)
-        echo "DATABRICKS_JOB_ID=$DATABRICKS_JOB_ID" >> $GITHUB_ENV
+  #   - name: Build wheel package
+  #     run: |
+  #       cd $GITHUB_WORKSPACE
+  #       python -m pip install wheel
+  #       python setup.py bdist_wheel
+  #       ls -la dist/
+  #       WHEEL_FILE=$(ls dist/*.whl | head -1)
+  #       echo "WHEEL_FILE=$(basename $WHEEL_FILE)" >> $GITHUB_ENV
+  #       echo "Built wheel package: $WHEEL_FILE"
     
-    - name: Trigger Databricks Job (pre-prod)
-      run: |
-        databricks jobs run-now --job-id $DATABRICKS_JOB_ID
+  #   - name: Upload wheel to Databricks
+  #     run: |
+  #       # Create directory if it doesn't exist
+  #       databricks fs mkdirs dbfs:/FileStore/wheels
+        
+  #       # Upload the wheel package
+  #       databricks fs cp dist/$WHEEL_FILE dbfs:/FileStore/wheels/$WHEEL_FILE
+        
+  #       # Verify the upload
+  #       databricks fs ls dbfs:/FileStore/wheels/$WHEEL_FILE
     
-    - name: Upload logs
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: preprod-logs
-        path: logs/
+  #   - name: Upload init script to Databricks
+  #     run: |
+  #       # Create directory if it doesn't exist
+  #       databricks fs mkdirs dbfs:/FileStore/init-scripts
+        
+  #       # Upload the init script
+  #       databricks fs cp init_scripts/install_crime_data_processor.sh dbfs:/FileStore/init-scripts/install_crime_data_processor.sh
+        
+  #       # Verify the upload
+  #       databricks fs ls dbfs:/FileStore/init-scripts/install_crime_data_processor.sh
     
-    - name: Request prod promotion
-      uses: actions/github-script@v6
-      with:
-        script: |
-          github.rest.issues.create({
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            title: "Request to promote to prod environment",
-            body: "Pre-prod environment pipeline completed successfully. Please review and approve promotion to prod environment.",
-            labels: ["promotion-request", "prod"]
-          })
+  #   - name: Create Databricks Job for pre-prod
+  #     env:
+  #       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+  #       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+  #       DATABRICKS_CLUSTER_ID: ${{ secrets.DATABRICKS_CLUSTER_ID }}
+  #       AZURE_STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
+  #       AZURE_STORAGE_ACCOUNT_KEY: ${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}
+  #       AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
+  #       ENVIRONMENT: pre-prod
+  #     run: |
+  #       python -m src.databricks_job_setup
+  #       export DATABRICKS_JOB_ID=$(cat databricks_job_id.txt)
+  #       echo "DATABRICKS_JOB_ID=$DATABRICKS_JOB_ID" >> $GITHUB_ENV
+    
+  #   - name: Trigger Databricks Job (pre-prod)
+  #     run: |
+  #       databricks jobs run-now --job-id $DATABRICKS_JOB_ID
+    
+  #   - name: Upload logs
+  #     if: always()
+  #     uses: actions/upload-artifact@v4
+  #     with:
+  #       name: preprod-logs
+  #       path: logs/
+    
+  #   - name: Request prod promotion
+  #     uses: actions/github-script@v6
+  #     with:
+  #       script: |
+  #         github.rest.issues.create({
+  #           owner: context.repo.owner,
+  #           repo: context.repo.repo,
+  #           title: "Request to promote to prod environment",
+  #           body: "Pre-prod environment pipeline completed successfully. Please review and approve promotion to prod environment.",
+  #           labels: ["promotion-request", "prod"]
+  #         })
 
-  prod-environment:
-    needs: pre-prod-environment
-    environment: prod
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.issue.labels.*.name, 'prod')
-    steps:
-    - uses: actions/checkout@v3
+  # prod-environment:
+  #   needs: pre-prod-environment
+  #   environment: prod
+  #   runs-on: ubuntu-latest
+  #   if: github.event_name == 'workflow_dispatch' || contains(github.event.issue.labels.*.name, 'prod')
+  #   steps:
+  #   - uses: actions/checkout@v3
     
-    - name: Download artifacts
-      uses: actions/download-artifact@v3
-      with:
-        name: pipeline-artifacts
-        path: artifacts/
+  #   - name: Download artifacts
+  #     uses: actions/download-artifact@v3
+  #     with:
+  #       name: pipeline-artifacts
+  #       path: artifacts/
     
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ env.PYTHON_VERSION }}
+  #   - name: Set up Python
+  #     uses: actions/setup-python@v4
+  #     with:
+  #       python-version: ${{ env.PYTHON_VERSION }}
     
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r artifacts/requirements.txt
-        pip install requests  # Required for direct API calls to Databricks
+  #   - name: Install dependencies
+  #     run: |
+  #       python -m pip install --upgrade pip
+  #       pip install -r artifacts/requirements.txt
+  #       pip install requests wheel  # Required for API calls and wheel building
     
-    - name: Install Databricks CLI
-      run: pip install databricks-cli
+  #   - name: Install Databricks CLI
+  #     run: pip install databricks-cli
     
-    - name: Configure Databricks CLI
-      env:
-        DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-        DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-      run: |
-        databricks configure --token <<EOF
-        $DATABRICKS_HOST
-        $DATABRICKS_TOKEN
-        EOF
+  #   - name: Configure Databricks CLI
+  #     env:
+  #       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+  #       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+  #     run: |
+  #       databricks configure --token <<EOF
+  #       $DATABRICKS_HOST
+  #       $DATABRICKS_TOKEN
+  #       EOF
     
-    - name: Create Databricks Job for prod
-      env:
-        DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
-        DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
-        DATABRICKS_CLUSTER_ID: ${{ secrets.DATABRICKS_CLUSTER_ID }}
-        AZURE_STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
-        AZURE_STORAGE_ACCOUNT_KEY: ${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}
-        AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
-        ENVIRONMENT: prod
-      run: |
-        python -m src.databricks_job_setup
-        export DATABRICKS_JOB_ID=$(cat databricks_job_id.txt)
-        echo "DATABRICKS_JOB_ID=$DATABRICKS_JOB_ID" >> $GITHUB_ENV
+  #   - name: Upload wheel to Databricks
+  #     run: |
+  #       # Verify the wheel exists in DBFS
+  #       databricks fs ls dbfs:/FileStore/wheels/$WHEEL_FILE
     
-    - name: Trigger Databricks Job (prod)
-      run: |
-        databricks jobs run-now --job-id $DATABRICKS_JOB_ID
+  #   - name: Create Databricks Job for prod
+  #     env:
+  #       DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+  #       DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+  #       DATABRICKS_CLUSTER_ID: ${{ secrets.DATABRICKS_CLUSTER_ID }}
+  #       AZURE_STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
+  #       AZURE_STORAGE_ACCOUNT_KEY: ${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}
+  #       AZURE_STORAGE_CONTAINER_NAME: ${{ secrets.AZURE_STORAGE_CONTAINER_NAME }}
+  #       ENVIRONMENT: prod
+  #     run: |
+  #       python -m src.databricks_job_setup
+  #       export DATABRICKS_JOB_ID=$(cat databricks_job_id.txt)
+  #       echo "DATABRICKS_JOB_ID=$DATABRICKS_JOB_ID" >> $GITHUB_ENV
     
-    - name: Upload logs
-      if: always()
-      uses: actions/upload-artifact@v3
-      with:
-        name: prod-logs
-        path: logs/ 
+  #   - name: Trigger Databricks Job (prod)
+  #     run: |
+  #       databricks jobs run-now --job-id $DATABRICKS_JOB_ID
+    
+  #   - name: Upload logs
+  #     if: always()
+  #     uses: actions/upload-artifact@v3
+  #     with:
+  #       name: prod-logs
+  #       path: logs/ 
